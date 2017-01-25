@@ -45,7 +45,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--version", action="version", version=__version__)
 _workflow.add_workflow_command_line_group(parser)
 args = parser.parse_args()
-wflow = _workflow.Workflow(args, workflow_name)
+
+container = _workflow.Workflow(args, workflow_name)
+wflow = _workflow.Workflow(args, workflow_name + "-main")
 all_files = _workflow.FileList([])
 tags = []
 initDir = os.getcwd()
@@ -386,7 +388,20 @@ if post_proc_method in ["COH_PTF_WORKFLOW", "COH_PTF_OFFLINE",
 
 all_files.extend(pp_files)
 
-# COMPILE WORKFLOW AND WRITE DAX
-wflow.save()
+# ADD MAIN WORKFLOW
+container += wflow
+
+# RAPIDPE SUBWORKFLOW
+if rapidpe_wflow.cp.has_section("workflow-rapidpe"):
+    import Pegasus.DAX3 as dax
+    rapidpe_wflow = _workflow.Workflow(args, workflow_name + "-rapidpe")
+    rapidpe_files = _workflow.setup_rapipe_followup_workflow(rapidpe_wflow)
+    all_files.extend(rapidpe_files)
+
+    container += rapidpe_wflow
+    dep = dax.Dependency(parent=wflow.as_job, child=rapidpe_wflow.as_job)
+    container._adag.addDependency(dep)
+
+container.save()
 logging.info("Written dax.")
 

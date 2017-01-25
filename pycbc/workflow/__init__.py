@@ -44,6 +44,7 @@ try:
     from pycbc.workflow.injection import *
     from pycbc.workflow.plotting import *
     from pycbc.workflow.minifollowups import *
+    from pycbc.workflow.rapid_pe import *
 except ImportError:
     pass
 
