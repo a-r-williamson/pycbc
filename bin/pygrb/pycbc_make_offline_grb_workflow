@@ -34,6 +34,7 @@ import argparse
 import logging
 import pycbc.workflow as _workflow
 from pycbc_glue.segments import segment, segmentlist, segmentlistdict
+from pycbc import frame
 from pycbc.results.legacy_grb import make_grb_segments_plot
 
 workflow_name = "pygrb_offline"
@@ -145,8 +146,6 @@ else:
     wflow.analysis_time = segment(int(sciSegs[ifo][0][0]) + deadtime + padding,
                                   int(sciSegs[ifo][0][1]) - deadtime - padding)
 
-wflow.cp = _workflow.set_grb_start_end(wflow.cp, int(sciSegs[ifo][0][0]),
-                                       int(sciSegs[ifo][0][1]))
 ext_file = None
 
 # DATAFIND
@@ -173,9 +172,19 @@ ifos = sciSegs.keys()
 wflow.ifos = ifos
 datafind_veto_files = _workflow.FileList([])
 
+# LONG TIME SLIDES
+long_slides = True if wflow.cp.has_option("workflow", "do-long-slides") else False
+if long_slides:
+    num_slides = int((int(wflow.cp.get("workflow", "end-time")) - int(wflow.cp.get("workflow", "start-time"))) / (256. * (len(ifos) - 1)))
+    logging.info(num_slides)
+    num_ifos = range(len(ifos))
+    long_slide_ifos = {ifo: num_ifos.pop() for ifo in ifos}
+
 # GATING
 if wflow.cp.has_option("workflow-condition_strain", "do-autogating"):
     logging.info("Creating autogating jobs.")
+    wflow.cp = _workflow.set_grb_start_end(wflow.cp, int(sciSegs[ifo][0][0]),
+                                           int(sciSegs[ifo][0][1]))
     gating_nodes, gated_files = _workflow.make_gating_node(wflow,
             datafind_files, outdir=dfDir)
     gating_method = wflow.cp.get("workflow-condition_strain",
@@ -204,6 +213,24 @@ if wflow.cp.has_option("workflow-condition_strain", "do-autogating"):
         gated_frames.convert_to_lal_cache().tofile(\
                             open(gated_cache.storage_path, "w"))
         datafind_files.extend(_workflow.FileList([gated_cache]))
+
+        if long_slides:
+            gated_frame_paths = [gated_frame.storage_path for gated_frame in \
+                                 gated_frames]
+            chan = wflow.cp.get("workflow",
+                                "{}-channel-name".format(ifo.lower()))
+            frame_data = frame.read_frame(gated_frame_paths, chan)
+            for slide_num in range(num_slides):
+                logging.info(ifo)
+                logging.info(frame_data.sample_rate * 256 * long_slide_ifos[ifo])
+                frame_data.roll(frame_data.sample_rate * 256 * long_slide_ifos[ifo])
+                slid_frame_file = _workflow.File(ifo,
+                        "gated_slide{}".format(slide_num),
+                        segment(int(wflow.cp.get("workflow", "start-time")),
+                                int(wflow.cp.get("workflow", "end-time"))),
+                        extension="gwf", directory=dfDir)
+                frame.write_frame(slid_frame_file.storage_path, chan,
+                                  frame_data)
 
 datafind_veto_files.extend(datafind_files)
 ifo = sciSegs.keys()[0]
