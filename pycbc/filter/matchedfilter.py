@@ -562,7 +562,7 @@ class MatchedFilterSkyMaxControl(object):
         logging.info("%s points above threshold" % str(len(idx)))            
  
 
-        idx, snrv = events.cluster_reduce(idx, snrv, window)
+        #idx, snrv = events.cluster_reduce(idx, snrv, window)
         logging.info("%s clustered points" % str(len(idx)))
 
         u_vals, coa_phase = compute_u_val_for_sky_loc_stat(
@@ -617,6 +617,7 @@ def compute_max_snr_over_sky_loc_stat(hplus, hcross, hphccorr,
     # NOTE: Not much optimization has been done here! This may need to be
     # C-ified using scipy.weave.
 
+    #print(hplus.data, hcross.data)
     if out is None:
         out = zeros(len(hplus))
         out.non_zero_locs = numpy.array([], dtype=out.dtype)
@@ -656,6 +657,7 @@ def compute_max_snr_over_sky_loc_stat(hplus, hcross, hphccorr,
         hplus = hplus[locs]
         hcross = hcross[locs]
 
+    #print(hplus.data, hcross.data)
     hplus = hplus * hpnorm
     hcross = hcross * hcnorm
   
@@ -682,12 +684,14 @@ def compute_max_snr_over_sky_loc_stat(hplus, hcross, hphccorr,
     assert(len(hplus) == len(hcross))
 
     # Now the stuff where comp. cost may be a problem
+    #print(hplus, hcross)
     hplus_magsq = numpy.real(hplus) * numpy.real(hplus) + \
                        numpy.imag(hplus) * numpy.imag(hplus)
     hcross_magsq = numpy.real(hcross) * numpy.real(hcross) + \
                        numpy.imag(hcross) * numpy.imag(hcross)
     rho_pluscross = numpy.real(hplus) * numpy.real(hcross) + numpy.imag(hplus)*numpy.imag(hcross)
 
+    #print(hplus_magsq, hcross_magsq, rho_pluscross)
     sqroot = (hplus_magsq - hcross_magsq)**2
     sqroot += 4 * (hphccorr * hplus_magsq - rho_pluscross) * \
                   (hphccorr * hcross_magsq - rho_pluscross) 
@@ -703,7 +707,7 @@ def compute_max_snr_over_sky_loc_stat(hplus, hcross, hphccorr,
     det_stat_sq = 0.5 * (hplus_magsq + hcross_magsq - \
                          2 * rho_pluscross*hphccorr + sqroot)
 
-    det_stat = numpy.sqrt(det_stat_sq)
+    det_stat = numpy.sqrt(det_stat_sq / denom)
 
     if thresh:
         out.data[locs] = det_stat
@@ -1002,6 +1006,7 @@ def matched_filter_core(template, data, psd=None, low_frequency_cutoff=None,
         _qtilde.clear()         
     
     correlate(htilde[kmin:kmax], stilde[kmin:kmax], _qtilde[kmin:kmax])
+    #print(htilde[kmin:kmax].data, stilde[kmin:kmax].data, _qtilde[kmin:kmax].data)
 
     if psd is not None:
         if isinstance(psd, FrequencySeries):

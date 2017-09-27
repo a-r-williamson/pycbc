@@ -565,6 +565,11 @@ def insert_strain_option_group_multi_ifo(parser):
                             metavar='IFO:CHANNEL',
                             help="The channel containing the gravitational "
                                 "strain data")
+    data_reading_group.add_argument("--frame-type", type=str, nargs='+',
+                            action=MultiDetOptionAction,
+                            metavar='IFO:FRAME_TYPE',
+                            help="The frame type containing the gravitational "
+                                "strain data")
 
     #Read from cache file
     data_reading_group.add_argument("--frame-cache", type=str, nargs="+",
