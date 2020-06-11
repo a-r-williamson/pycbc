@@ -36,11 +36,13 @@ class JointDistribution(object):
         (retrieved from the distributions' params attribute) must be the same
         as the set of variable_args provided.
     \*\*kwargs :
-        Valid keyword arguments include `constraints`. `constraints` is a list
-        functions that accept a dict of parameters with the parameter name as
-        the key. If the constraint is satisfied the function should return
-        True, if the constraint is violated, then the function should return
-        False.
+        Valid keyword arguments include:
+        `constraints` : a list of functions that accept a dict of parameters
+        with the parameter name as the key. If the constraint is satisfied the
+        function should return True, if the constraint is violated, then the
+        function should return False.
+        `n_test_samples` : number of random draws used to fix pdf normalization
+        factor after applying constraints.
 
     Attributes
     ----------
@@ -57,9 +59,9 @@ class JointDistribution(object):
     An example of creating a joint distribution with constraint that total mass must
     be below 30.
 
-    >>> from pycbc.distributions import uniform, JointDistribution
+    >>> from pycbc.distributions import Uniform, JointDistribution
     >>> def mtotal_lt_30(params):
-        ...    return True if params["mass1"] + params["mass2"] < 30 else False
+        ...    return params["mass1"] + params["mass2"] < 30
     >>> mass_lim = (2, 50)
     >>> uniform_prior = Uniform(mass1=mass_lim, mass2=mass_lim)
     >>> prior_eval = JointDistribution(["mass1", "mass2"], uniform_prior,
@@ -113,16 +115,21 @@ class JointDistribution(object):
             for dist in self.distributions:
                 draw = dist.rvs(n_test_samples)
                 for param in dist.params:
-                    samples[param] = draw[param][:]
+                    samples[param] = draw[param]
+            samples = record.FieldArray.from_kwargs(**samples)
 
             # evaluate constraints
-            result = numpy.ones(len(samples.values()[0]), dtype=bool)
+            result = numpy.ones(samples.shape, dtype=bool)
             for constraint in self._constraints:
-                result = constraint(samples) & result
+                result &= constraint(samples)
 
             # set new scaling factor for prior to be
             # the fraction of acceptances in random sampling of entire space
-            self._pdf_scale = sum(result) / float(n_test_samples)
+            self._pdf_scale = result.sum() / float(n_test_samples)
+            if self._pdf_scale == 0.0:
+                raise ValueError("None of the random draws for pdf "
+                    "renormalization satisfied the constraints. "
+                    " You can try increasing the 'n_test_samples' keyword.")
 
         else:
             self._pdf_scale = 1.0
@@ -152,7 +159,7 @@ class JointDistribution(object):
         return params
 
     def __call__(self, **params):
-        """Evalualate joint distribution for parameters.
+        """Evaluate joint distribution for parameters.
         """
         for constraint in self._constraints:
             if not constraint(params):
@@ -188,3 +195,11 @@ class JointDistribution(object):
 
         return out
 
+    def cdfinv(self, **original):
+        """ Apply the inverse cdf to the array of values [0, 1]. Every
+        variable parameter must be given as a keyword argument.
+        """
+        updated = {}
+        for dist in self.distributions:
+            updated.update(dist.cdfinv(**original))
+        return updated

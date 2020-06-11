@@ -100,6 +100,7 @@ def fft(invec, outvec, prec, itype, otype):
     f = lib.DftiComputeForward
     f.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
     status = f(descr, invec.ptr, outvec.ptr)
+    lib.DftiFreeDescriptor(ctypes.byref(descr))
     check_status(status)
 
 def ifft(invec, outvec, prec, itype, otype):
@@ -108,6 +109,7 @@ def ifft(invec, outvec, prec, itype, otype):
     f = lib.DftiComputeBackward
     f.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
     status = f(descr, invec.ptr, outvec.ptr)
+    lib.DftiFreeDescriptor(ctypes.byref(descr))
     check_status(status)
 
 # Class based API
@@ -119,7 +121,8 @@ def _get_desc(fftobj):
     desc = ctypes.c_void_p(1)
     prec = mkl_prec[fftobj.invec.precision]
     domain = mkl_domain[str(fftobj.invec.kind)][str(fftobj.outvec.kind)]
-    status = _create_descr(ctypes.byref(desc), prec, domain, 1, fftobj.size)
+    status = _create_descr(ctypes.byref(desc), prec, domain,
+                           1, int(fftobj.size))
     check_status(status)
     # Now we set various things depending on exactly what kind of transform we're
     # performing.

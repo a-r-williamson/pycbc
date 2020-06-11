@@ -32,7 +32,7 @@ def timestr(s):
     return t
 
 def get_name(segment_file):
-    from pycbc.ligolw import ligolw, table, lsctables, utils as ligolw_utils
+    from glue.ligolw import ligolw, table, lsctables, utils as ligolw_utils
     # dummy class needed for loading LIGOLW files
     class KF(ligolw.LIGOLWContentHandler):
         pass
@@ -47,7 +47,7 @@ def plot_segs(start, end, color=None, y=0, h=1):
         plot_segs.colors = cycle(['red', 'blue', 'green', 'yellow', 'cyan', 'violet'])
 
     if color is None:
-        color = plot_segs.colors.next()
+        color = next(plot_segs.colors)
 
     for s, e in zip(start, end):
         ax = pylab.gca()

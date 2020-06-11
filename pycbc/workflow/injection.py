@@ -29,7 +29,9 @@ inspinj jobs). Full documentation for this module can be found here:
 https://ldas-jobs.ligo.caltech.edu/~cbc/docs/pycbc/NOTYETCREATED.html
 """
 
-import logging, urllib, urlparse
+import logging
+from six.moves.urllib.request import pathname2url
+from six.moves.urllib.parse import urljoin
 from pycbc.workflow.core import File, FileList, make_analysis_dir, Executable, resolve_url
 from pycbc.workflow.jobsetup import (LalappsInspinjExecutable,
         LigolwCBCJitterSkylocExecutable, LigolwCBCAlignTotalSpinExecutable,
@@ -127,14 +129,6 @@ def setup_injection_workflow(workflow, output_dir=None,
         inj_tag = section.upper()
         curr_tags = tags + [inj_tag]
 
-        # FIXME: Remove once fixed in pipedown
-        # TEMPORARILY we require inj tags to end in "INJ"
-        if not inj_tag.endswith("INJ"):
-            err_msg = "Currently workflow requires injection names to end with "
-            err_msg += "a inj suffix. Ie. bnslininj or bbhinj. "
-            err_msg += "%s is not good." %(inj_tag.lower())
-            raise ValueError(err_msg)
-
         # Parse for options in ini file
         injection_method = workflow.cp.get_opt_tags("workflow-injections",
                                                     "injections-method",
@@ -156,8 +150,7 @@ def setup_injection_workflow(workflow, output_dir=None,
             injectionFilePath = workflow.cp.get_opt_tags("workflow-injections",
                                       "injections-pregenerated-file", curr_tags)
             injectionFilePath = resolve_url(injectionFilePath)
-            file_url = urlparse.urljoin('file:',
-                                        urllib.pathname2url(injectionFilePath))
+            file_url = urljoin('file:', pathname2url(injectionFilePath))
             inj_file = File('HL', 'PREGEN_inj_file', full_segment, file_url,
                             tags=curr_tags)
             inj_file.PFN(injectionFilePath, site='local')

@@ -25,8 +25,9 @@
 This modules provides classes for generating waveforms.
 """
 
-import waveform
-import ringdown
+from . import waveform
+from .waveform import (NoWaveformError, FailedWaveformError)
+from . import ringdown
 from pycbc import filter
 from pycbc import transforms
 from pycbc.types import TimeSeries
@@ -35,7 +36,7 @@ from pycbc.waveform.utils import apply_fd_time_shift, taper_timeseries, \
                                  ceilpow2
 from pycbc.detector import Detector
 import lal as _lal
-from pycbc import gate
+from pycbc import strain
 import logging
 
 #
@@ -70,9 +71,7 @@ class BaseGenerator(object):
     generator : function
         The function that is called for waveform generation.
     variable_args : tuple
-        The list of names of variable arguments. Values passed to the
-        `generate_from_args` function must be in the same order as the
-        arguments in this list.
+        The list of names of variable arguments.
     frozen_params : dict
         A dictionary of the frozen keyword arguments that are always passed
         to the waveform generator function.
@@ -100,14 +99,6 @@ class BaseGenerator(object):
     def static_args(self):
         """Returns a dictionary of the static arguments."""
         return self.frozen_params
-
-    def generate_from_args(self, *args):
-        """Generates a waveform. The list of arguments must be in the same
-        order as self's variable_args attribute.
-        """
-        if len(args) != len(self.variable_args):
-            raise ValueError("variable argument length mismatch")
-        return self.generate(**dict(zip(self.variable_args, args)))
 
     def generate(self, **kwargs):
         """Generates a waveform from the keyword args. The current params
@@ -144,7 +135,16 @@ class BaseGenerator(object):
     def _generate_from_current(self):
         """Generates a waveform from the current parameters.
         """
-        return self.generator(**self.current_params)
+        try:
+            return self.generator(**self.current_params)
+        except RuntimeError as e:
+            # we'll get a RuntimeError if lalsimulation failed to generate
+            # the waveform for whatever reason
+            strparams = ' | '.join(['{}: {}'.format(p, str(val))
+                                   for p, val in self.current_params.items()])
+            raise FailedWaveformError("Failed to generate waveform with "
+                                      "parameters:\n{}\nError was: {}"
+                                      .format(strparams, e))
 
 
 class BaseCBCGenerator(BaseGenerator):
@@ -165,7 +165,8 @@ class BaseCBCGenerator(BaseGenerator):
             variable_args=variable_args, **frozen_params)
         # decorate the generator function with a list of functions that convert
         # parameters to those used by the waveform generation interface
-        all_args = set(self.frozen_params.keys() + list(self.variable_args))
+        all_args = set(list(self.frozen_params.keys()) +
+                       list(self.variable_args))
         # compare a set of all args of the generator to the input parameters
         # of the functions that do conversions and adds to list of pregenerate
         # functions if it is needed
@@ -534,14 +535,6 @@ class FDomainDetFrameGenerator(object):
     def epoch(self):
         return _lal.LIGOTimeGPS(self._epoch)
 
-    def generate_from_args(self, *args):
-        """Generates a waveform, applies a time shift and the detector response
-        function from the given args.
-
-        The args are assumed to be in the same order as the variable args.
-        """
-        return self.generate(**dict(zip(self.variable_args, args)))
-
     def generate(self, **kwargs):
         """Generates a waveform, applies a time shift and the detector response
         function from the given kwargs.
@@ -590,7 +583,7 @@ class FDomainDetFrameGenerator(object):
             # resize all to nearest power of 2
             for d in h.values():
                 d.resize(ceilpow2(len(d)-1) + 1)
-            h = gate.apply_gates_to_fd(h, self.gates)
+            h = strain.apply_gates_to_fd(h, self.gates)
         return h
 
 

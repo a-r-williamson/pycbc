@@ -17,10 +17,7 @@ This modules provides classes for evaluating distributions with bounds.
 """
 
 import warnings
-try:
-    from ConfigParser import Error
-except ImportError:
-    from configparser import Error
+from six.moves.configparser import Error
 from pycbc import boundaries
 from pycbc import VARARGS_DELIM
 
@@ -164,7 +161,7 @@ def bounded_from_config(cls, cp, section, variable_args,
         ['btype-min-{}'.format(arg) for arg in variable_args] + \
         ['btype-max-{}'.format(arg) for arg in variable_args] + \
         ['cyclic-{}'.format(arg) for arg in variable_args] + \
-        additional_opts.keys()
+        list(additional_opts.keys())
 
     # get a dict with bounds as value
     dist_args = {}
@@ -232,7 +229,7 @@ class BoundedDist(object):
                               "reflected boundaries. Reflected boundaries "
                               "can cause issues when used in an MCMC.")
         self._bounds = params
-        self._params = sorted(params.keys())
+        self._params = sorted(list(params.keys()))
 
     @property
     def params(self):
@@ -304,6 +301,19 @@ class BoundedDist(object):
         raise NotImplementedError("pdf function not set")
 
     __call__ = logpdf
+
+    def _cdfinv_param(self, param, value):
+        """Return the cdfinv for a single given parameter """
+        raise NotImplementedError("inverse cdf not set")
+
+    def cdfinv(self, **kwds):
+        """Return the inverse cdf to map the unit interval to parameter bounds.
+        You must provide a keyword for every parameter.
+        """
+        updated = {}
+        for param in self.params:
+            updated[param] = self._cdfinv_param(param, kwds[param])
+        return updated
 
     @classmethod
     def from_config(cls, cp, section, variable_args, bounds_required=False):

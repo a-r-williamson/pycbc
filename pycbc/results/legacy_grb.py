@@ -25,7 +25,8 @@ from __future__ import division
 import re
 import os
 from argparse import ArgumentParser
-from glue import markup, segments
+from ligo import segments
+from glue import markup
 
 def initialize_page(title, style, script, header=None):
     """
@@ -219,7 +220,7 @@ def write_antenna(page, args, seg_plot=None, grid=False, ipn=False):
                 antenna_ifo[ifo].append(round(f_q,3))
         dectKeys = antenna_ifo.keys()
 
-        for elements in range(len(antenna_ifo.values()[0])):
+        for elements in range(len(tuple(antenna_ifo.values())[0])):
             newDict={}
             for detectors in range(len(antenna_ifo.keys())):
                 newDict[dectKeys[detectors]] = antenna_ifo[\

@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/env python
 
 # Copyright (C) 2016 Miriam Cabero Mueller, Collin Capano
 #
@@ -28,93 +28,90 @@
 import argparse
 import itertools
 import logging
+import sys
+
 import numpy
-import matplotlib; matplotlib.use("agg")
+
+import matplotlib
+from matplotlib import (patches, use)
+
 import pycbc
 import pycbc.version
-import sys
-from matplotlib import patches
-from matplotlib import pyplot
-from pycbc.inference import option_utils, likelihood
-from pycbc.io.inference_hdf import InferenceFile
+from pycbc.results.plot import (add_style_opt_to_parser, set_style_from_cli)
 from pycbc.results import metadata
+from pycbc.io import FieldArray
+from pycbc import __version__
+from pycbc import conversions
+from pycbc.workflow import WorkflowConfigParser
+from pycbc.inference import (option_utils, io)
+
 from pycbc.results.scatter_histograms import create_multidim_plot
 
+use('agg')
+
 # add options to command line
-parser = argparse.ArgumentParser()
-parser.add_argument("--version", action="version",
-                    version=pycbc.version.git_verbose_msg,
+parser = io.ResultsArgumentParser()
+# program-specific
+parser.add_argument("--version", action="version", version=__version__,
                     help="Prints version information.")
 parser.add_argument("--output-file", type=str, required=True,
                     help="Output plot path.")
 parser.add_argument("--verbose", action="store_true", default=False,
                     help="Be verbose")
-parser.add_argument("--input-file-labels", nargs="+", default=None,
-                    help="Labels to add to plot if using more than one"
-                         "input file.")
-
+parser.add_argument("--plot-prior", nargs="+", type=str,
+                    help="Plot the prior on the 1D marginal plots using the "
+                         "given config file(s).")
+parser.add_argument("--prior-nsamples", type=int, default=10000,
+                    help="The number of samples to use for plotting the "
+                         "prior. Default is 10000.")
 # add options for what plots to create
 option_utils.add_plot_posterior_option_group(parser)
-
 # scatter configuration
 option_utils.add_scatter_option_group(parser)
-
 # density configuration
 option_utils.add_density_option_group(parser)
-
-# add standard option utils
-option_utils.add_inference_results_option_group(parser)
+parser.add_argument('--dpi', type=int, default=200,
+                    help="Set the DPI of the plot. Default is 200.")
+# style option
+add_style_opt_to_parser(parser)
 
 # parse command line
 opts = parser.parse_args()
 
+# set mpl style
+set_style_from_cli(opts)
+
 # set logging
 pycbc.init_logging(opts.verbose)
 
-# get parameters
-logging.info("Loading parameters")
-fp, parameters, labels, samples = option_utils.results_from_cli(opts)
+# load the samples
+fps, parameters, labels, samples = io.results_from_cli(opts)
 
 # typecast to list so the input files can be iterated over
-fp = fp if isinstance(fp, list) else [fp]
-parameters = parameters if isinstance(parameters[0], list) else [parameters]
-labels = labels if isinstance(labels[0], list) else [labels]
+fps = fps if isinstance(fps, list) else [fps]
 samples = samples if isinstance(samples, list) else [samples]
 
-# get likelihood statistic values
+# if a z-arg is specified, load samples for it
 if opts.z_arg is not None:
-    logging.info("Getting likelihood stats")
-
-    # lists to hold z-axis values and labels for each input file
+    logging.info("Getting samples for colorbar")
+    z_arg = 'loglikelihood' if opts.z_arg == 'snr' else opts.z_arg
+    zlbl = opts.z_arg_labels[opts.z_arg]
     zvals = []
-    zlbl = []
-
-    # loop over each input file and append z-axis values and labels to lists
-    for f in fp:
-        likelihood_stats = f.read_likelihood_stats(
-            thin_start=opts.thin_start, thin_end=opts.thin_end,
-            thin_interval=opts.thin_interval, iteration=opts.iteration)
-        f_zvals, f_zlbl = option_utils.get_zvalues(f, opts.z_arg,
-                                                   likelihood_stats)
-        zvals.append(f_zvals)
-        zlbl.append(f_zlbl)
-        f.close()
-
-# else there are no z-axis values
+    for fp in fps:
+        zsamples = fp.samples_from_cli(opts, parameters=z_arg)
+        if opts.z_arg == 'snr':
+            loglr = zsamples[z_arg] - zsamples.lognl
+            zsamples[z_arg] = conversions.snr_from_loglr(loglr)
+        zvals.append(zsamples[z_arg])
 else:
     zvals = None
     zlbl = None
-    for f in fp:
-        f.close()
-
-# determine if colorbar should be shown
-show_colorbar = True if opts.z_arg else False
 
 # if no plotting options selected, then the default options are based
 # on the number of parameters
 plot_options = [opts.plot_marginal, opts.plot_scatter, opts.plot_density]
 if not numpy.any(plot_options):
-    if len(parameters[0]) == 1:
+    if len(parameters) == 1:
         opts.plot_marginal = True
     else:
         opts.plot_scatter = True
@@ -124,11 +121,43 @@ if not numpy.any(plot_options):
         # two or more parameters
         opts.plot_marginal = True
 
+if opts.plot_prior is not None:
+    # check that we're plotting 1D marginals
+    if not opts.plot_marginal:
+        raise ValueError("prior may only be plotted on 1D marginal plot; "
+                         "either turn on --plot-marginal, or turn off "
+                         "--plot-prior")
+    logging.info("Loading prior")
+    cp = WorkflowConfigParser(opts.plot_prior)
+    prior = option_utils.prior_from_config(cp)
+    logging.info("Drawing samples from prior")
+    prior_samples = prior.rvs(opts.prior_nsamples)
+    # we'll just use the first file for metadata
+    fp = fps[0]
+    # add the static params
+    for param in fp.attrs['static_params']:
+        setattr(prior_samples, param, fp.attrs[param])
+    # remap any parameters
+    if 'remapped_params' in fp.attrs:
+        remapped_params = {}
+        for func, param in fp.attrs['remapped_params']:
+            try:
+                remapped_params[param] = prior_samples[func]
+            except (NameError, TypeError):
+                continue
+        prior_samples = FieldArray.from_kwargs(**remapped_params)
+        for param in fp.attrs['static_params']:
+            setattr(prior_samples, param, fp.attrs[param])
+
+# close the files, we don't need them anymore
+for fp in fps:
+    fp.close()
+
 # get minimum and maximum ranges for each parameter from command line
 mins, maxs = option_utils.plot_ranges_from_cli(opts)
 
 # add any missing parameters
-for p in parameters[0]:
+for p in parameters:
     if p not in mins:
         mins[p] = numpy.array([s[p].min() for s in samples]).min()
     if p not in maxs:
@@ -137,10 +166,16 @@ for p in parameters[0]:
 # get injection values if desired
 expected_parameters = {}
 if opts.plot_injection_parameters:
-    injections = option_utils.injections_from_cli(opts)
-    for p in parameters[0]:
+    injections = io.injections_from_cli(opts)
+    for p in parameters:
         # check that all of the injections are the same
-        unique_vals = numpy.unique(injections[p])
+        try:
+            vals = injections[p]
+        except (NameError, TypeError):
+            # injection doesn't have this parameter, skip
+            logging.warn("Could not find injection parameter {}".format(p))
+            continue
+        unique_vals = numpy.unique(vals)
         if unique_vals.size != 1:
             raise ValueError("More than one injection found! To use "
                 "plot-injection-parameters, there must be a single unique "
@@ -152,42 +187,58 @@ if opts.plot_injection_parameters:
 # get expected parameter values from command line
 expected_parameters.update(option_utils.expected_parameters_from_cli(opts))
 
-# assign some colors
-colors = itertools.cycle(["black"] + ["C{}".format(i) for i in range(10)])
+# get the color cycle to use
+color_cycle = [c['color'] for c in matplotlib.rcParams['axes.prop_cycle']]
+colors = itertools.cycle(color_cycle)
 
 # plot each input file
 logging.info("Plotting")
 hist_colors = []
-for i, (p, l, s) in enumerate(zip(parameters, labels, samples)):
+for (i, s) in enumerate(samples):
 
     # on first iteration create figure otherwise update old figure
     if i == 0:
         fig = None
         axis_dict = None
 
-    # loop over some contour colors
-    contour_color = colors.next() if not opts.contour_color \
-                                                else opts.contour_color
+    # get a default line color; this is used for the 1D marginal lines
+    linecolor = next(colors)
+    # set different colors depending on if one or more files was provided
+    if len(opts.input_file) == 1:
+        # make the hist color black or white, depending on if dark background
+        # is used
+        if opts.mpl_style == 'dark_background':
+            hist_color = 'white'
+        else:
+            hist_color = 'black'
+        # make histograms filled if only one input file to plot
+        fill_color = 'gray'
+        # make the default contour color white if plot density is on
+        if not opts.contour_color and opts.plot_density:
+            contour_color = 'white'
+        # otherwise, make the default be the same as the hist color
+        elif not opts.contour_color:
+            contour_color = hist_color
+        else:
+            contour_color = opts.contour_color
+    else:
+        # don't fill in the histograms
+        fill_color = None
+        # make the contour and hist colors the same as the 1D marginal lines
+        contour_color = hist_color = linecolor
 
-    # make histograms filled if only one input file to plot
-    fill_color = "gray" if len(opts.input_file) == 1 else None
-
-    # make histogram black lines if only one
-    hist_color = "black" if len(opts.input_file) == 1 else contour_color
+    # save the hist color for the legend, in the case of multiple files
     hist_colors.append(hist_color)
-
-    # pick a new color for each input file
-    linecolor = "navy" if len(opts.input_file) == 1 else contour_color
 
     # plot
     fig, axis_dict = create_multidim_plot(
-                    p, s, labels=l, fig=fig, axis_dict=axis_dict,
+                    parameters, s, labels=labels, fig=fig, axis_dict=axis_dict,
                     plot_marginal=opts.plot_marginal,
                     marginal_percentiles=opts.marginal_percentiles,
                     plot_scatter=opts.plot_scatter,
                     zvals=zvals[i] if zvals is not None else None,
-                    show_colorbar=show_colorbar,
-                    cbar_label=zlbl[i] if zlbl is not None else None,
+                    show_colorbar=opts.z_arg is not None,
+                    cbar_label=zlbl,
                     vmin=opts.vmin, vmax=opts.vmax,
                     scatter_cmap=opts.scatter_cmap,
                     plot_density=opts.plot_density,
@@ -196,33 +247,47 @@ for i, (p, l, s) in enumerate(zip(parameters, labels, samples)):
                     density_cmap=opts.density_cmap,
                     contour_color=contour_color,
                     hist_color=hist_color,
-                    line_color=contour_color,
+                    line_color=linecolor,
                     fill_color=fill_color,
                     use_kombine=opts.use_kombine_kde,
                     mins=mins, maxs=maxs,
                     expected_parameters=expected_parameters,
                     expected_parameters_color=opts.expected_parameters_color)
 
+# plot the prior
+if opts.plot_prior:
+    if len(opts.input_file) > 1:
+        hist_color = next(colors)
+    fig, axis_dict = create_multidim_plot(
+        parameters, prior_samples, fig=fig, axis_dict=axis_dict,
+        labels=labels, plot_marginal=True, marginal_percentiles=[],
+        plot_scatter=False, plot_density=False, plot_contours=False,
+        fill_color=None,
+        marginal_title=False, marginal_linestyle=':',
+        hist_color=hist_color,
+        mins=mins, maxs=maxs)
+
 # add legend to upper right for input files
-if opts.input_file_labels:
+if len(opts.input_file) > 1:
     handles = []
-    for color, label in zip(hist_colors, opts.input_file_labels):
+    labels = []
+    for color, fn in zip(hist_colors, opts.input_file):
+        label = opts.input_file_labels[fn]
         handles.append(patches.Patch(color=color, label=label))
+        labels.append(label)
     fig.legend(loc="upper right", handles=handles,
-               labels=opts.input_file_labels)
+               labels=labels)
 
 # set DPI
-fig.set_dpi(200)
-
-# set tight layout
-fig.set_tight_layout(True)
+fig.set_dpi(opts.dpi)
 
 # save
 metadata.save_fig_with_metadata(
-                 fig, opts.output_file, {},
+                 fig, opts.output_file,
                  cmd=" ".join(sys.argv),
                  title="Posteriors",
-                 caption="Posterior probability density functions.")
+                 caption="Posterior probability density functions.",
+                 fig_kwds={'bbox_inches': 'tight'})
 
 # finish
 logging.info("Done")

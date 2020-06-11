@@ -17,7 +17,7 @@
 """
 Provides a class representing a frequency series.
 """
-
+from __future__ import division
 import os as _os, h5py
 from pycbc.types.array import Array, _convert, zeros, _noreal
 import lal as _lal
@@ -73,7 +73,14 @@ class FrequencySeries(Array):
                     epoch = _lal.LIGOTimeGPS(0)
             elif epoch is not None:
                 try: 
-                    epoch = _lal.LIGOTimeGPS(epoch)
+                    if isinstance(epoch, _numpy.generic):
+                        # In python3 lal LIGOTimeGPS will not work on numpy
+                        # types as input. A quick google on how to generically
+                        # convert numpy floats/ints to the python equivalent
+                        # https://stackoverflow.com/questions/9452775/
+                        epoch = _lal.LIGOTimeGPS(epoch.item())
+                    else:
+                        epoch = _lal.LIGOTimeGPS(epoch)
                 except:
                     raise TypeError('epoch must be either None or a lal.LIGOTimeGPS')
         Array.__init__(self, initial_array, dtype=dtype, copy=copy)
@@ -124,6 +131,12 @@ class FrequencySeries(Array):
                                delta_f=new_delta_f,
                                epoch=self._epoch,
                                copy=False)
+
+    def at_frequency(self, freq):
+        """ Return the value at the specified frequency
+        """
+        return self[int(freq / self.delta_f)]
+
     @property
     def start_time(self):
         """Return the start time of this vector
@@ -396,7 +409,7 @@ class FrequencySeries(Array):
             _numpy.savetxt(path, output)
         elif ext == '.xml' or path.endswith('.xml.gz'):
             from pycbc.io.live import make_psd_xmldoc
-            from pycbc.ligolw import utils
+            from glue.ligolw import utils
 
             if self.kind != 'real':
                 raise ValueError('XML only supports real frequency series')
@@ -411,13 +424,14 @@ class FrequencySeries(Array):
             psddict = {ifo: output}
             utils.write_filename(make_psd_xmldoc(psddict), path,
                                  gz=path.endswith(".gz"))
-        elif ext =='.hdf':
+        elif ext == '.hdf':
             key = 'data' if group is None else group
-            f = h5py.File(path)
-            ds = f.create_dataset(key, data=self.numpy(), compression='gzip',
-                                  compression_opts=9, shuffle=True)
-            ds.attrs['epoch'] = float(self.epoch)
-            ds.attrs['delta_f'] = float(self.delta_f)
+            with h5py.File(path, 'a') as f:
+                ds = f.create_dataset(key, data=self.numpy(),
+                                      compression='gzip',
+                                      compression_opts=9, shuffle=True)
+                ds.attrs['epoch'] = float(self.epoch)
+                ds.attrs['delta_f'] = float(self.delta_f)
         else:
             raise ValueError('Path must end with .npy, .txt, .xml, .xml.gz '
                              'or .hdf')
@@ -448,7 +462,7 @@ class FrequencySeries(Array):
 
         # add 0.5 to round integer
         tlen  = int(1.0 / self.delta_f / delta_t + 0.5)
-        flen = tlen / 2 + 1
+        flen = int(tlen / 2 + 1)
         
         if flen < len(self):
             raise ValueError("The value of delta_t (%s) would be "
@@ -497,7 +511,7 @@ class FrequencySeries(Array):
               low_frequency_cutoff=None, high_frequency_cutoff=None):
         """ Return the match between the two TimeSeries or FrequencySeries.
 
-        Return the match between two waveforms. This is equivelant to the overlap
+        Return the match between two waveforms. This is equivalent to the overlap
         maximized over time and phase. By default, the other vector will be
         resized to match self. Beware, this may remove high frequency content or the
         end of the vector.
@@ -569,7 +583,7 @@ def load_frequencyseries(path, group=None):
         data = _numpy.loadtxt(path)
     elif ext == '.hdf':
         key = 'data' if group is None else group
-        f = h5py.File(path)
+        f = h5py.File(path, 'r')
         data = f[key][:]
         series = FrequencySeries(data, delta_f=f[key].attrs['delta_f'],
                                        epoch=f[key].attrs['epoch']) 

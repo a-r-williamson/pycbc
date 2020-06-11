@@ -16,6 +16,8 @@
 """Utilites to estimate PSDs from data.
 """
 
+from six.moves import range
+
 import numpy
 from pycbc.types import Array, FrequencySeries, TimeSeries, zeros
 from pycbc.types import real_same_precision_as, complex_same_precision_as
@@ -48,7 +50,7 @@ def median_bias(n):
     if n >= 1000:
         return numpy.log(2)
     ans = 1
-    for i in xrange(1, (n - 1) / 2 + 1):
+    for i in range(1, (n - 1) // 2 + 1):
         ans += 1.0 / (2*i + 1) - 1.0 / (2*i)
     return ans
 
@@ -141,11 +143,14 @@ def welch(timeseries, seg_len=4096, seg_stride=2048, window='hann',
 
     # calculate psd of each segment
     delta_f = 1. / timeseries.delta_t / seg_len
-    segment_tilde = FrequencySeries(numpy.zeros(seg_len / 2 + 1), \
-        delta_f=delta_f, dtype=fs_dtype)
+    segment_tilde = FrequencySeries(
+        numpy.zeros(int(seg_len / 2 + 1)),
+        delta_f=delta_f,
+        dtype=fs_dtype,
+    )
 
     segment_psds = []
-    for i in xrange(num_segments):
+    for i in range(num_segments):
         segment_start = i * seg_stride
         segment_end = segment_start + seg_len
         segment = timeseries[segment_start:segment_end]
@@ -213,35 +218,34 @@ def inverse_spectrum_truncation(psd, max_filter_len, low_frequency_cutoff=None, 
     # sanity checks
     if type(max_filter_len) is not int or max_filter_len <= 0:
         raise ValueError('max_filter_len must be a positive integer')
-    if low_frequency_cutoff is not None and low_frequency_cutoff < 0 \
-        or low_frequency_cutoff > psd.sample_frequencies[-1]:
+    if low_frequency_cutoff is not None and \
+            (low_frequency_cutoff < 0 or
+             low_frequency_cutoff > psd.sample_frequencies[-1]):
         raise ValueError('low_frequency_cutoff must be within the bandwidth of the PSD')
 
     N = (len(psd)-1)*2
 
-    inv_asd = FrequencySeries((1. / psd)**0.5, delta_f=psd.delta_f, \
+    inv_asd = FrequencySeries(zeros(len(psd)), delta_f=psd.delta_f, \
         dtype=complex_same_precision_as(psd))
 
-    inv_asd[0] = 0
-    inv_asd[N/2] = 0
-    q = TimeSeries(numpy.zeros(N), delta_t=(N / psd.delta_f), \
-        dtype=real_same_precision_as(psd))
-
+    kmin = 1
     if low_frequency_cutoff:
         kmin = int(low_frequency_cutoff / psd.delta_f)
-        inv_asd[0:kmin] = 0
 
+    inv_asd[kmin:N//2] = (1.0 / psd[kmin:N//2]) ** 0.5
+    q = TimeSeries(numpy.zeros(N), delta_t=(N / psd.delta_f), \
+        dtype=real_same_precision_as(psd))
     ifft(inv_asd, q)
 
-    trunc_start = max_filter_len / 2
-    trunc_end = N - max_filter_len / 2
+    trunc_start = max_filter_len // 2
+    trunc_end = N - max_filter_len // 2
     if trunc_end < trunc_start:
         raise ValueError('Invalid value in inverse_spectrum_truncation')
 
     if trunc_method == 'hann':
         trunc_window = Array(numpy.hanning(max_filter_len), dtype=q.dtype)
-        q[0:trunc_start] *= trunc_window[max_filter_len/2:max_filter_len]
-        q[trunc_end:N] *= trunc_window[0:max_filter_len/2]
+        q[0:trunc_start] *= trunc_window[-trunc_start:]
+        q[trunc_end:N] *= trunc_window[0:max_filter_len//2]
 
     if trunc_start < trunc_end:
         q[trunc_start:trunc_end] = 0
@@ -295,14 +299,14 @@ def bandlimited_interpolate(series, delta_f):
     delta_t = 1.0 / series.delta_f / N
 
     new_N = int(1.0 / (delta_t * delta_f))
-    new_n = new_N / 2 + 1
+    new_n = new_N // 2 + 1
 
     series_in_time = TimeSeries(zeros(N), dtype=real_same_precision_as(series), delta_t=delta_t)
     ifft(series, series_in_time)
 
     padded_series_in_time = TimeSeries(zeros(new_N), dtype=series_in_time.dtype, delta_t=delta_t)
-    padded_series_in_time[0:N/2] = series_in_time[0:N/2]
-    padded_series_in_time[new_N-N/2:new_N] = series_in_time[N/2:N]
+    padded_series_in_time[0:N//2] = series_in_time[0:N//2]
+    padded_series_in_time[new_N-N//2:new_N] = series_in_time[N//2:N]
 
     interpolated_series = FrequencySeries(zeros(new_n), dtype=series.dtype, delta_f=delta_f)
     fft(padded_series_in_time, interpolated_series)

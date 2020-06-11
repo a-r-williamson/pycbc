@@ -23,31 +23,19 @@ from matplotlib import pyplot as plt
 
 import copy, numpy as np
 
-from scipy.stats import kstest
-
-from pycbc import io, events, bin_utils, results
+from pycbc import events, bin_utils, results
+from pycbc.events import triggers
 from pycbc.events import trigger_fits as trstats
+from pycbc.events.stat import sngl_statistic_dict
 import pycbc.version
 
 #### DEFINITIONS AND FUNCTIONS ####
 
-stat_dict = {
-    "new_snr"       : events.newsnr,
-    "effective_snr" : events.effsnr,
-    "snr"           : lambda snr, rchisq : snr,
-    "snronchi"      : lambda snr, rchisq : snr / (rchisq ** 0.5),
-    "newsnr_sgveto"      : events.newsnr_sgveto,
-}
-
-def get_stat(statchoice, snr, rchisq, sgchisq, fac):
-    if fac is not None:
-        if statchoice not in ['new_snr', 'effective_snr']:
-            raise RuntimeError("Can't use --stat-factor with this statistic!")
-        return stat_dict[statchoice](snr, rchisq, fac)
-    elif statchoice == 'newsnr_sgveto':
-        return stat_dict[statchoice](snr, rchisq, sgchisq)
-    else:
-        return stat_dict[statchoice](snr, rchisq)
+def get_stat(statchoice, trigs):
+    # Initialize statclass with an empty file list. In general could feed it
+    # files here for statistics which need that.
+    stat_instance = sngl_statistic_dict[statchoice]([])
+    return stat_instance.single(trigs)
 
 #### MAIN ####
 
@@ -75,7 +63,7 @@ parser.add_argument("--fit-function",
                     choices=["exponential", "rayleigh", "power"],
                     help="Functional form for the maximum likelihood fit")
 parser.add_argument("--sngl-stat", default="new_snr",
-                    choices=["snr", "snronchi", "effective_snr", "new_snr", "newsnr_sgveto"],
+                    choices=sngl_statistic_dict.keys(),
                     help="Function of SNR and chisq to perform fits with")
 parser.add_argument("--stat-factor", type=float,
                     help="Adjustable magic number used in some sngl "
@@ -171,28 +159,7 @@ logging.info('Opening template file: %s' % args.bank_file)
 templatef = h5py.File(args.bank_file, 'r')
 
 # get the stat values
-minth = min(args.stat_threshold)
-snr = trigf[args.ifo+'/snr'][:]
-# SNR cut to reduce memory usage
-logging.info('Applying SNR cut at %f' % minth)
-aboveminth = snr >= minth
-snr = snr[aboveminth]
-chisq = trigf[args.ifo+'/chisq'][:][aboveminth]
-chisq_dof = trigf[args.ifo+'/chisq_dof'][:][aboveminth]
-rchisq = chisq / (2 * chisq_dof - 2)
-
-try:
-    sgchisq = trigf[args.ifo+'/sg_chisq'][:][aboveminth]
-except KeyError:
-    sgchisq = None
-
-del chisq
-del chisq_dof
-logging.info('Calculating stat values')
-stat = get_stat(args.sngl_stat, snr, rchisq, sgchisq, args.stat_factor)
-del snr
-del rchisq
-del sgchisq
+stat = get_stat(args.sngl_stat, trigf[args.ifo])
 
 # get the duration values if needed
 if args.bin_param == 'template_duration' and not args.f_lower:
@@ -205,10 +172,10 @@ else:
 minth = min(args.stat_threshold)
 abovethresh = stat >= minth
 stat = stat[abovethresh]
-tid = trigf[args.ifo+'/template_id'][:][aboveminth][abovethresh]
-time = trigf[args.ifo+'/end_time'][:][aboveminth][abovethresh]
+tid = trigf[args.ifo+'/template_id'][:][abovethresh]
+time = trigf[args.ifo+'/end_time'][:][abovethresh]
 if trig_dur:
-    tdur = trigf[args.ifo+'/template_duration'][:][aboveminth][abovethresh]
+    tdur = trigf[args.ifo+'/template_duration'][:][abovethresh]
 logging.info('%i trigs left after thresholding at %f' % (len(stat), minth))
 
 # now do vetoing
@@ -233,7 +200,7 @@ def get_pars(args, tag, m1, m2, s1z, s2z):
         logging.info('Getting %s values for %i triggers' % (paramarg, len(m1)))
     except:
         pass
-    return trstats.get_param(paramarg, args, m1, m2, s1z, s2z)
+    return triggers.get_param(paramarg, args, m1, m2, s1z, s2z)
 
 if args.prune_param:
     logging.info('Getting min and max param values')
@@ -273,7 +240,7 @@ if args.prune_param:
         lstat = statpruneall[loudest]
         ltid = tidpruneall[loudest]
         ltime = timepruneall[loudest]
-        m1, m2, s1z, s2z = trstats.get_masses(templatef, ltid)
+        m1, m2, s1z, s2z = triggers.get_mass_spin(templatef, ltid)
         lbin = trstats.which_bin(get_pars(args, 'prune', m1, m2, s1z, s2z),
                                  minprpar, maxprpar,
                                  args.prune_bins, log=args.log_prune_param)
@@ -316,7 +283,7 @@ if args.prune_param:
 if trig_dur:
     binpars = tdur + args.min_duration
 else:
-    m1, m2, s1z, s2z = trstats.get_masses(templatef, tid)
+    m1, m2, s1z, s2z = triggers.get_mass_spin(templatef, tid)
     binpars = get_pars(args, 'bin', m1, m2, s1z, s2z)
 logging.info("Parameter range of triggers: %f - %f" %
                                                   (min(binpars), max(binpars)))

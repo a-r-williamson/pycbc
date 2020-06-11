@@ -2,9 +2,8 @@
 segment.
 """
 import numpy
-from pycbc.ligolw import table, lsctables, utils as ligolw_utils
-from glue.segments import segment, segmentlist
-
+from glue.ligolw import table, lsctables, utils as ligolw_utils
+from ligo.segments import segment, segmentlist
 
 def start_end_to_segments(start, end):
     return segmentlist([segment(s, e) for s, e in zip(start, end)])
@@ -27,7 +26,7 @@ def start_end_from_segments(segment_file):
     start: numpy.ndarray
     end: numpy.ndarray
     """
-    from pycbc.ligolw.ligolw import LIGOLWContentHandler as h; lsctables.use_in(h)
+    from glue.ligolw.ligolw import LIGOLWContentHandler as h; lsctables.use_in(h)
     indoc = ligolw_utils.load_filename(segment_file, False, contenthandler=h)
     segment_table  = table.get_table(indoc, lsctables.SegmentTable.tableName)
     start = numpy.array(segment_table.getColumnByName('start_time'))
@@ -66,7 +65,7 @@ def indices_within_times(times, start, end):
     if len(left) == 0:
         return numpy.array([], dtype=numpy.uint32)
 
-    return tsort[numpy.hstack(numpy.r_[s:e] for s, e in zip(left, right))]
+    return tsort[numpy.hstack([numpy.r_[s:e] for s, e in zip(left, right)])]
 
 def indices_outside_times(times, start, end):
     """
@@ -106,7 +105,7 @@ def select_segments_by_definer(segment_file, segment_name=None, ifo=None):
     -------
     seg: list of segments
     """
-    from pycbc.ligolw.ligolw import LIGOLWContentHandler as h; lsctables.use_in(h)
+    from glue.ligolw.ligolw import LIGOLWContentHandler as h; lsctables.use_in(h)
     indoc = ligolw_utils.load_filename(segment_file, False, contenthandler=h)
     segment_table  = table.get_table(indoc, 'segment')
 
@@ -201,7 +200,7 @@ def indices_outside_segments(times, segment_files, ifo=None, segment_name=None):
 def get_segment_definer_comments(xml_file, include_version=True):
     """Returns a dict with the comment column as the value for each segment"""
 
-    from pycbc.ligolw.ligolw import LIGOLWContentHandler as h
+    from glue.ligolw.ligolw import LIGOLWContentHandler as h
     lsctables.use_in(h)
 
     # read segment definer table

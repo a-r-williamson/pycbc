@@ -4,6 +4,7 @@ import ctypes
 import pycbc.scheme as _scheme
 from pycbc.libutils import get_ctypes_library
 from .core import _BaseFFT, _BaseIFFT
+from ..types import check_aligned
 
 # IMPORTANT NOTE TO PYCBC DEVELOPERS:
 # Because this module is loaded automatically when present, and because
@@ -181,41 +182,45 @@ def get_flag(mlvl,aligned):
 
 # Add the ability to read/store wisdom to filenames
 
-def import_single_wisdom_from_filename(filename):
+def wisdom_io(filename, precision, action):
+    """Import or export an FFTW plan for single or double precision.
+    """
     if not _fftw_threaded_set:
         set_threads_backend()
-    f = float_lib.fftwf_import_wisdom_from_filename
+    fmap = {('float', 'import'): float_lib.fftwf_import_wisdom_from_filename,
+            ('float', 'export'): float_lib.fftwf_export_wisdom_to_filename,
+            ('double', 'import'): double_lib.fftw_import_wisdom_from_filename,
+            ('double', 'export'): double_lib.fftw_export_wisdom_to_filename}
+    f = fmap[(precision, action)]
     f.argtypes = [ctypes.c_char_p]
-    retval = f(filename)
+    retval = f(filename.encode())
     if retval == 0:
-        raise RuntimeError("Could not import wisdom from file {0}".format(filename))
+        raise RuntimeError(('Could not {0} wisdom '
+                            'from file {1}').format(action, filename))
+
+def import_single_wisdom_from_filename(filename):
+    wisdom_io(filename, 'float', 'import')
 
 def import_double_wisdom_from_filename(filename):
-    if not _fftw_threaded_set:
-        set_threads_backend()
-    f = double_lib.fftw_import_wisdom_from_filename
-    f.argtypes = [ctypes.c_char_p]
-    retval = f(filename)
-    if retval == 0:
-        raise RuntimeError("Could not import wisdom from file {0}".format(filename))
+    wisdom_io(filename, 'double', 'import')
 
 def export_single_wisdom_to_filename(filename):
-    if not _fftw_threaded_set:
-        set_threads_backend()
-    f = float_lib.fftwf_export_wisdom_to_filename
-    f.argtypes = [ctypes.c_char_p]
-    retval = f(filename)
-    if retval == 0:
-        raise RuntimeError("Could not export wisdom to file {0}".format(filename))
+    wisdom_io(filename, 'float', 'export')
 
 def export_double_wisdom_to_filename(filename):
+    wisdom_io(filename, 'double', 'export')
+
+def set_planning_limit(time):
     if not _fftw_threaded_set:
         set_threads_backend()
-    f = double_lib.fftw_export_wisdom_to_filename
-    f.argtypes = [ctypes.c_char_p]
-    retval = f(filename)
-    if retval == 0:
-        raise RuntimeError("Could not export wisdom to file {0}".format(filename))
+
+    f = double_lib.fftw_set_timelimit
+    f.argtypes = [ctypes.c_double]
+    f(time)
+
+    f = float_lib.fftwf_set_timelimit
+    f.argtypes = [ctypes.c_double]
+    f(time)
 
 # Create function maps for the dtypes
 plan_function = {'float32': {'complex64': float_lib.fftwf_plan_dft_r2c_1d},
@@ -293,8 +298,16 @@ def plan(size, idtype, odtype, direction, mlvl, aligned, nthreads, inplace):
     # We don't need ip or op anymore
     del ip, op
 
-    # And done...
-    return theplan
+    # Make the destructors
+    if idtype.char in ['f', 'F']:
+        destroy = float_lib.fftwf_destroy_plan
+    else:
+        destroy = double_lib.fftw_destroy_plan 
+
+    destroy.argtypes = [ctypes.c_void_p]
+
+
+    return theplan, destroy
 
 
 # Note that we don't need to check whether we've set the threading backend
@@ -306,16 +319,18 @@ def execute(plan, invec, outvec):
     f(plan, invec.ptr, outvec.ptr)
 
 def fft(invec, outvec, prec, itype, otype):
-    theplan = plan(len(invec), invec.dtype, outvec.dtype, FFTW_FORWARD,
-                   get_measure_level(),(invec._data.isaligned and outvec._data.isaligned),
+    theplan, destroy = plan(len(invec), invec.dtype, outvec.dtype, FFTW_FORWARD,
+                            get_measure_level(),(check_aligned(invec.data) and check_aligned(outvec.data)),
                    _scheme.mgr.state.num_threads, (invec.ptr == outvec.ptr))
     execute(theplan, invec, outvec)
+    destroy(theplan)
 
 def ifft(invec, outvec, prec, itype, otype):
-    theplan = plan(len(outvec), invec.dtype, outvec.dtype, FFTW_BACKWARD,
-                   get_measure_level(),(invec._data.isaligned and outvec._data.isaligned),
+    theplan, destroy = plan(len(outvec), invec.dtype, outvec.dtype, FFTW_BACKWARD,
+                            get_measure_level(),(check_aligned(invec.data) and check_aligned(outvec.data)),
                    _scheme.mgr.state.num_threads, (invec.ptr == outvec.ptr))
     execute(theplan, invec, outvec)
+    destroy(theplan)
 
 # Class based API
 
@@ -386,7 +401,7 @@ def _fftw_setup(fftobj):
     if nthreads != _fftw_current_nthreads:
         _fftw_plan_with_nthreads(nthreads)
     mlvl = get_measure_level()
-    aligned = fftobj.invec.data.isaligned and fftobj.outvec.data.isaligned
+    aligned = check_aligned(fftobj.invec.data) and check_aligned(fftobj.outvec.data)
     flags = get_flag(mlvl, aligned)
     plan_func = _plan_funcs_dict[ (str(fftobj.invec.dtype), str(fftobj.outvec.dtype)) ]
     tmpin = zeros(len(fftobj.invec), dtype = fftobj.invec.dtype)

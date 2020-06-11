@@ -22,11 +22,10 @@
 # =============================================================================
 #
 import numpy, mako.template
-from pycuda import gpuarray
 from pycuda.tools import dtype_to_ctype
 from pycuda.elementwise import ElementwiseKernel
 from pycuda.compiler import SourceModule
-from .events import _BaseThresholdCluster
+from .eventmgr import _BaseThresholdCluster
 import pycbc.scheme
 
 threshold_op = """
@@ -113,7 +112,8 @@ __global__ void threshold_and_cluster(float2* in, float2* outv, int* outl, int w
     svi[threadIdx.x] = mvi;
     sl[threadIdx.x] = ml;
 
-    syncthreads();
+    __syncthreads();
+
     if (threadIdx.x < 32){
         int tl = threadIdx.x;
 

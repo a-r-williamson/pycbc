@@ -26,26 +26,31 @@
 Module to generate figures with scatter plots and histograms.
 """
 
-import numpy
-import scipy.stats
 import itertools
+import sys
+
+import numpy
+
+import scipy.stats
+
 import matplotlib
+
 # Only if a backend is not already set ... This should really *not* be done
 # here, but in the executables you should set matplotlib.use()
 # This matches the check that matplotlib does internally, but this *may* be
 # version dependenant. If this is a problem then remove this and control from
 # the executables directly.
-import sys
-if 'matplotlib.backends' not in sys.modules:
+if 'matplotlib.backends' not in sys.modules:  # nopep8
     matplotlib.use('agg')
-from matplotlib import offsetbox
-from matplotlib import pyplot
-import matplotlib.gridspec as gridspec
+
+from matplotlib import (offsetbox, pyplot, gridspec)
+
 from pycbc.results import str_utils
 from pycbc.io import FieldArray
 
+
 def create_axes_grid(parameters, labels=None, height_ratios=None,
-        width_ratios=None, no_diagonals=False):
+                     width_ratios=None, no_diagonals=False):
     """Given a list of parameters, creates a figure with an axis for
     every possible combination of the parameters.
 
@@ -88,12 +93,13 @@ def create_axes_grid(parameters, labels=None, height_ratios=None,
     fig = pyplot.figure(figsize=fsize)
     # create the axis grid
     gs = gridspec.GridSpec(ndim, ndim, width_ratios=width_ratios,
-        height_ratios=height_ratios, wspace=0.05, hspace=0.05)
+                           height_ratios=height_ratios,
+                           wspace=0.05, hspace=0.05)
     # create grid of axis numbers to easily create axes in the right locations
     axes = numpy.arange(ndim**2).reshape((ndim, ndim))
 
     # Select possible combinations of plots and establish rows and columns.
-    combos =  list(itertools.combinations(parameters, 2))
+    combos = list(itertools.combinations(parameters, 2))
     # add the diagonals
     if not no_diagonals:
         combos += [(p, p) for p in parameters]
@@ -154,9 +160,10 @@ def construct_kde(samples_array, use_kombine=False):
 
 
 def create_density_plot(xparam, yparam, samples, plot_density=True,
-        plot_contours=True, percentiles=None, cmap='viridis',
-        contour_color=None, xmin=None, xmax=None, ymin=None, ymax=None,
-        exclude_region=None, fig=None, ax=None, use_kombine=False):
+                        plot_contours=True, percentiles=None, cmap='viridis',
+                        contour_color=None, xmin=None, xmax=None,
+                        ymin=None, ymax=None, exclude_region=None,
+                        fig=None, ax=None, use_kombine=False):
     """Computes and plots posterior density and confidence intervals using the
     given samples.
 
@@ -238,7 +245,9 @@ def create_density_plot(xparam, yparam, samples, plot_density=True,
     if ymax is None:
         ymax = ysamples.max()
     npts = 100
-    X, Y = numpy.mgrid[xmin:xmax:complex(0,npts), ymin:ymax:complex(0,npts)] # pylint:disable=invalid-slice-index
+    X, Y = numpy.mgrid[
+        xmin:xmax:complex(0, npts),  # pylint:disable=invalid-slice-index
+        ymin:ymax:complex(0, npts)]  # pylint:disable=invalid-slice-index
     pos = numpy.vstack([X.ravel(), Y.ravel()])
     if use_kombine:
         Z = numpy.exp(kde(pos.T).reshape(X.shape))
@@ -255,7 +264,7 @@ def create_density_plot(xparam, yparam, samples, plot_density=True,
 
     if plot_density:
         ax.imshow(numpy.rot90(Z), extent=[xmin, xmax, ymin, ymax],
-            aspect='auto', cmap=cmap, zorder=1)
+                  aspect='auto', cmap=cmap, zorder=1)
         if contour_color is None:
             contour_color = 'w'
 
@@ -284,9 +293,11 @@ def create_density_plot(xparam, yparam, samples, plot_density=True,
 
 
 def create_marginalized_hist(ax, values, label, percentiles=None,
-        color='k', fillcolor='gray', linecolor='navy',
-        title=True, expected_value=None, expected_color='red',
-        rotated=False, plot_min=None, plot_max=None):
+                             color='k', fillcolor='gray', linecolor='navy',
+                             linestyle='-',
+                             title=True, expected_value=None,
+                             expected_color='red', rotated=False,
+                             plot_min=None, plot_max=None):
     """Plots a 1D marginalized histogram of the given param from the given
     samples.
 
@@ -307,11 +318,16 @@ def create_marginalized_hist(ax, values, label, percentiles=None,
     fillcolor : {'gray', string, or None}
         What color to fill the histogram with. Set to None to not fill the
         histogram. Default is 'gray'.
+    linestyle : str, optional
+        What line style to use for the histogram. Default is '-'.
     linecolor : {'navy', string}
         What color to use for the percentile lines. Default is 'navy'.
-    title : {True, bool}
-        Add a title with the median value +/- uncertainty, with the
-        max(min) `percentile` used for the +(-) uncertainty.
+    title : bool, optional
+        Add a title with a estimated value +/- uncertainty. The estimated value
+        is the pecentile halfway between the max/min of ``percentiles``, while
+        the uncertainty is given by the max/min of the ``percentiles``. If no
+        percentiles are specified, defaults to quoting the median +/- 95/5
+        percentiles.
     rotated : {False, bool}
         Plot the histogram on the y-axis instead of the x. Default is False.
     plot_min : {None, float}
@@ -332,11 +348,15 @@ def create_marginalized_hist(ax, values, label, percentiles=None,
     else:
         orientation = 'vertical'
     ax.hist(values, bins=50, histtype=htype, orientation=orientation,
-            facecolor=fillcolor, edgecolor=color, lw=2, normed=True)
+            facecolor=fillcolor, edgecolor=color, ls=linestyle, lw=2,
+            density=True)
     if percentiles is None:
         percentiles = [5., 50., 95.]
-    values = numpy.percentile(values, percentiles)
-    for val in values:
+    if len(percentiles) > 0:
+        plotp = numpy.percentile(values, percentiles)
+    else:
+        plotp = []
+    for val in plotp:
         if rotated:
             ax.axhline(y=val, ls='dashed', color=linecolor, lw=2, zorder=3)
         else:
@@ -348,49 +368,54 @@ def create_marginalized_hist(ax, values, label, percentiles=None,
         else:
             ax.axvline(expected_value, color=expected_color, lw=1.5, zorder=2)
     if title:
-        values_med = numpy.median(values)
-        values_min = values.min()
-        values_max = values.max()
+        if len(percentiles) > 0:
+            minp = min(percentiles)
+            maxp = max(percentiles)
+            medp = (maxp + minp) / 2.
+        else:
+            minp = 5
+            medp = 50
+            maxp = 95
+        values_min = numpy.percentile(values, minp)
+        values_med = numpy.percentile(values, medp)
+        values_max = numpy.percentile(values, maxp)
         negerror = values_med - values_min
         poserror = values_max - values_med
-        fmt = '$' + str_utils.format_value(values_med, negerror,
-              plus_error=poserror, ndecs=2) + '$'
-
+        fmt = '${0}$'.format(str_utils.format_value(
+            values_med, negerror, plus_error=poserror))
         if rotated:
             ax.yaxis.set_label_position("right")
-
             # sets colored title for marginal histogram
             set_marginal_histogram_title(ax, fmt, color,
                                          label=label, rotated=rotated)
-
-            # Remove x-ticks
-            ax.set_xticks([])
-            # turn off x-labels
-            ax.set_xlabel('')
-            # set limits
-            ymin, ymax = ax.get_ylim()
-            if plot_min is not None:
-                ymin = plot_min
-            if plot_max is not None:
-                ymax = plot_max
-            ax.set_ylim(ymin, ymax)
-
         else:
-
             # sets colored title for marginal histogram
             set_marginal_histogram_title(ax, fmt, color, label=label)
-
-            # Remove y-ticks
-            ax.set_yticks([])
-            # turn off y-label
-            ax.set_ylabel('')
-            # set limits
-            xmin, xmax = ax.get_xlim()
-            if plot_min is not None:
-                xmin = plot_min
-            if plot_max is not None:
-                xmax = plot_max
-            ax.set_xlim(xmin, xmax)
+    # remove ticks and set limits
+    if rotated:
+        # Remove x-ticks
+        ax.set_xticks([])
+        # turn off x-labels
+        ax.set_xlabel('')
+        # set limits
+        ymin, ymax = ax.get_ylim()
+        if plot_min is not None:
+            ymin = plot_min
+        if plot_max is not None:
+            ymax = plot_max
+        ax.set_ylim(ymin, ymax)
+    else:
+        # Remove y-ticks
+        ax.set_yticks([])
+        # turn off y-label
+        ax.set_ylabel('')
+        # set limits
+        xmin, xmax = ax.get_xlim()
+        if plot_min is not None:
+            xmin = plot_min
+        if plot_max is not None:
+            xmax = plot_max
+        ax.set_xlim(xmin, xmax)
 
 
 def set_marginal_histogram_title(ax, fmt, color, label=None, rotated=False):
@@ -468,17 +493,18 @@ def set_marginal_histogram_title(ax, fmt, color, label=None, rotated=False):
 
 
 def create_multidim_plot(parameters, samples, labels=None,
-                mins=None, maxs=None, expected_parameters=None,
-                expected_parameters_color='r',
-                plot_marginal=True, plot_scatter=True,
-                marginal_percentiles=None, contour_percentiles=None,
-                zvals=None, show_colorbar=True, cbar_label=None,
-                vmin=None, vmax=None, scatter_cmap='plasma',
-                plot_density=False, plot_contours=True,
-                density_cmap='viridis',
-                contour_color=None, hist_color='black',
-                line_color=None, fill_color='gray',
-                use_kombine=False, fig=None, axis_dict=None):
+                         mins=None, maxs=None, expected_parameters=None,
+                         expected_parameters_color='r',
+                         plot_marginal=True, plot_scatter=True,
+                         marginal_percentiles=None, contour_percentiles=None,
+                         marginal_title=True, marginal_linestyle='-',
+                         zvals=None, show_colorbar=True, cbar_label=None,
+                         vmin=None, vmax=None, scatter_cmap='plasma',
+                         plot_density=False, plot_contours=True,
+                         density_cmap='viridis',
+                         contour_color=None, hist_color='black',
+                         line_color=None, fill_color='gray',
+                         use_kombine=False, fig=None, axis_dict=None):
     """Generate a figure with several plots and histograms.
 
     Parameters
@@ -487,8 +513,9 @@ def create_multidim_plot(parameters, samples, labels=None,
         Names of the variables to be plotted.
     samples : FieldArray
         A field array of the samples to plot.
-    labels: {None, list}, optional
-        A list of names for the parameters.
+    labels: dict, optional
+        A dictionary mapping parameters to labels. If none provided, will just
+        use the parameter strings as the labels.
     mins : {None, dict}, optional
         Minimum value for the axis of each variable in `parameters`.
         If None, it will use the minimum of the corresponding variable in
@@ -512,6 +539,15 @@ def create_multidim_plot(parameters, samples, labels=None,
         What percentiles to draw lines at on the 1D histograms.
         If None, will draw lines at `[5, 50, 95]` (i.e., the bounds on the
         upper 90th percentile and the median).
+    marginal_title : bool, optional
+        Add a title over the 1D marginal plots that gives an estimated value
+        +/- uncertainty. The estimated value is the pecentile halfway between
+        the max/min of ``maginal_percentiles``, while the uncertainty is given
+        by the max/min of the ``marginal_percentiles. If no
+        ``marginal_percentiles`` are specified, the median +/- 95/5 percentiles
+        will be quoted.
+    marginal_linestyle : str, optional
+        What line style to use for the marginal histograms.
     contour_percentiles : {None, array}
         What percentile contours to draw on the scatter plots. If None,
         will plot the 50th and 90th percentiles.
@@ -554,16 +590,13 @@ def create_multidim_plot(parameters, samples, labels=None,
         `{('param1', 'param2'): (pyplot.axes, row index, column index)}`
     """
     if labels is None:
-        labels = [p for p in parameters]
-    # turn labels into a dict for easier access
-    labels = dict(zip(parameters, labels))
-
+        labels = {p: p for p in parameters}
     # set up the figure with a grid of axes
     # if only plotting 2 parameters, make the marginal plots smaller
     nparams = len(parameters)
     if nparams == 2:
-        width_ratios = [3,1]
-        height_ratios = [1,3]
+        width_ratios = [3, 1]
+        height_ratios = [1, 3]
     else:
         width_ratios = height_ratios = None
 
@@ -592,31 +625,15 @@ def create_multidim_plot(parameters, samples, labels=None,
 
     # values for axis bounds
     if mins is None:
-        mins = {p:samples[p].min() for p in parameters}
+        mins = {p: samples[p].min() for p in parameters}
     else:
         # copy the dict
-        mins = {p:val for p,val in mins.items()}
+        mins = {p: val for p, val in mins.items()}
     if maxs is None:
-        maxs = {p:samples[p].max() for p in parameters}
+        maxs = {p: samples[p].max() for p in parameters}
     else:
         # copy the dict
-        maxs = {p:val for p,val in maxs.items()}
-
-    # remove common offsets
-    for pi,param in enumerate(parameters):
-        values, offset = remove_common_offset(samples[param])
-        if offset != 0:
-            # we'll add the offset removed to the label
-            labels[param] = '{} - {:d}'.format(labels[param], offset)
-            samples[param] = values
-            mins[param] = mins[param] - float(offset)
-            maxs[param] = maxs[param] - float(offset)
-        # also remove from expected parameters, if they were provided
-        if expected_parameters is not None:
-            try:
-                expected_parameters[param] -= offset
-            except KeyError:
-                pass
+        maxs = {p: val for p, val in maxs.items()}
 
     # create the axis grid
     if fig is None and axis_dict is None:
@@ -625,10 +642,9 @@ def create_multidim_plot(parameters, samples, labels=None,
             width_ratios=width_ratios, height_ratios=height_ratios,
             no_diagonals=not plot_marginal)
 
-
     # Diagonals...
     if plot_marginal:
-        for pi,param in enumerate(parameters):
+        for pi, param in enumerate(parameters):
             ax, _, _ = axis_dict[param, param]
             # if only plotting 2 parameters and on the second parameter,
             # rotate the marginal plot
@@ -641,9 +657,11 @@ def create_multidim_plot(parameters, samples, labels=None,
                     expected_value = None
             else:
                 expected_value = None
-            create_marginalized_hist(ax, samples[param], label=labels[param],
-                color=hist_color, fillcolor=fill_color, linecolor=line_color,
-                title=True, expected_value=expected_value,
+            create_marginalized_hist(
+                ax, samples[param], label=labels[param],
+                color=hist_color, fillcolor=fill_color,
+                linestyle=marginal_linestyle, linecolor=line_color,
+                title=marginal_title, expected_value=expected_value,
                 expected_color=expected_parameters_color,
                 rotated=rotated, plot_min=mins[param], plot_max=maxs[param],
                 percentiles=marginal_percentiles)
@@ -659,8 +677,8 @@ def create_multidim_plot(parameters, samples, labels=None,
             else:
                 alpha = 1.
             plt = ax.scatter(x=samples[px], y=samples[py], c=zvals, s=5,
-                        edgecolors='none', vmin=vmin, vmax=vmax,
-                        cmap=scatter_cmap, alpha=alpha, zorder=2)
+                             edgecolors='none', vmin=vmin, vmax=vmax,
+                             cmap=scatter_cmap, alpha=alpha, zorder=2)
 
         if plot_contours or plot_density:
             # Exclude out-of-bound regions
@@ -670,13 +688,14 @@ def create_multidim_plot(parameters, samples, labels=None,
                 exclude_region = 'm_s > m_p'
             else:
                 exclude_region = None
-            create_density_plot(px, py, samples, plot_density=plot_density,
-                    plot_contours=plot_contours, cmap=density_cmap,
-                    percentiles=contour_percentiles,
-                    contour_color=contour_color, xmin=mins[px], xmax=maxs[px],
-                    ymin=mins[py], ymax=maxs[py],
-                    exclude_region=exclude_region, ax=ax,
-                    use_kombine=use_kombine)
+            create_density_plot(
+                px, py, samples, plot_density=plot_density,
+                plot_contours=plot_contours, cmap=density_cmap,
+                percentiles=contour_percentiles,
+                contour_color=contour_color, xmin=mins[px], xmax=maxs[px],
+                ymin=mins[py], ymax=maxs[py],
+                exclude_region=exclude_region, ax=ax,
+                use_kombine=use_kombine)
 
         if expected_parameters is not None:
             try:

@@ -4,9 +4,9 @@ PyCBC
 
 PyCBC is a software package used to explore astrophysical sources of gravitational waves.
 It contains algorithms that can detect coalescing compact binaries and measure
-the astrophysical parameters of detected sources. PyCBC was used 
+the astrophysical parameters of detected sources. PyCBC was used
 in the `first direct detection of gravitational waves (GW150914) by
-LIGO <https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.116.061102>`_ and 
+LIGO <https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.116.061102>`_ and
 is used in the ongoing analysis of LIGO and Virgo data.
 If you use PyCBC in your scientific publications or projects,
 we ask that you acknowlege our work by citing the papers described on the page:
@@ -29,7 +29,7 @@ Getting Started
         <script type="text/javascript">
             document.addEventListener("DOMContentLoaded", function(){
                 Typed.new(".element", {
-                    strings: ["^500<strong>docker pull pycbc/pycbc-el7:latest</strong><br>$ ^500<strong>docker run -it pycbc/pycbc-el7:latest /bin/bash -l</strong><br>&#40;pycbc-software&#41;&#91;pycbc@37184573e664 &#126;&#93;$ ^500<strong>python</strong><br>Python 2.7.5 &#40;default, Nov  6 2016, 00:28:07&#41;<br>&#91;GCC 4.8.5 20150623 &#40;Red Hat 4.8.5-11&#41;&#93; on linux2<br>&gt;&gt;&gt; ^500<strong>execfile&#40;&quot;/home/pycbc/src/pycbc/examples/waveform/match_waveform.py&quot;&#41;</strong><br>^1000The match is: 0.953<br>&gt;&gt;&gt; ^500<strong>from pycbc.waveform import td_approximants</strong><br>&gt;&gt;&gt; ^500<strong>print td_approximants&#40;&#41;&#91;20:24&#93;</strong><br>['SEOBNRv3', 'SEOBNRv2', 'SpinTaylorT1', 'SEOBNRv4']<br>&gt;&gt;&gt; "],
+                    strings: ["^500<strong>docker pull pycbc/pycbc-el7:latest</strong><br>$ ^500<strong>docker run -it pycbc/pycbc-el7:latest</strong><br>&#40;pycbc-software&#41;&#91;pycbc@37184573e664 &#126;&#93;$ ^500<strong>python</strong><br>Python 2.7.5 &#40;default, Nov  6 2016, 00:28:07&#41;<br>&#91;GCC 4.8.5 20150623 &#40;Red Hat 4.8.5-11&#41;&#93; on linux2<br>&gt;&gt;&gt; ^500<strong>execfile&#40;&quot;/opt/pycbc/src/pycbc/examples/waveform/match_waveform.py&quot;&#41;</strong><br>^1000The match is: 0.953<br>&gt;&gt;&gt; ^500<strong>from pycbc.waveform import td_approximants</strong><br>&gt;&gt;&gt; ^500<strong>print td_approximants&#40;&#41;&#91;20:24&#93;</strong><br>['SEOBNRv3', 'SEOBNRv2', 'SpinTaylorT1', 'SEOBNRv4']<br>&gt;&gt;&gt; "],
                     typeSpeed: 0
                 });
             });
@@ -54,7 +54,7 @@ Getting Started
  - Use the PyCBC Library within your Browser
 
    We have interactive jupyter notebooks on azure where you can try some of our
-   examples, and use the pycbc library. All from within the browser. 
+   examples, and use the pycbc library. All from within the browser.
    `Give it a try <https://notebooks.azure.com/nitz/libraries/pycbc>`_
 
 =====================
@@ -63,21 +63,21 @@ Installation
 
 Note, if you are a LIGO / Virgo member with access to LDG resources, PyCBC is *already*
 installed on your cluster through CVMFS! Instructions to source any release of PyCBC
-is available from the `releases page <https://github.com/ligo-cbc/pycbc/releases>`_. 
+is available from the `releases page <https://github.com/ligo-cbc/pycbc/releases>`_.
 
+You may also install PyCBC directly with pip. You may ommit `lalsuite` if you have
+your own build.
 
-Full manual installation instructions for users who want to use and develop PyCBC are available at:
+.. code-block:: bash
+
+   pip install lalsuite pycbc
+
+Full detailed installation instructions for users who want to use and develop PyCBC are available at:
 
 .. toctree::
    :maxdepth: 1
 
    install
-
-If you already have lalsuite installed, you may also install PyCBC directly with pip.
-
-.. code-block:: bash
-
-   pip install pycbc
 
 =======================
 Documentation for Users
@@ -119,7 +119,7 @@ Library Examples and Interactive Tutorials
 ==========================================
 
 We have interactive tutorials and examples of using the pycbc library hosted
-on azure jupyter notebooks. `Please give them a try. <https://notebooks.azure.com/nitz/libraries/pycbc>`_ 
+on azure jupyter notebooks. `Please give them a try. <https://notebooks.azure.com/nitz/libraries/pycbc>`_
 
 In addition we have some examples below.
 
@@ -127,8 +127,10 @@ In addition we have some examples below.
    :maxdepth: 2
 
    catalog
-   gw150914
+   dataquality
    frame
+   gw150914
+   detector
    psd
    noise
    waveform
@@ -151,7 +153,7 @@ documentation, develop the code, and create releases:
 
 .. toctree::
    :maxdepth: 1
-    
+
    documentation
    release
 

@@ -8,6 +8,17 @@ import types
 import signal
 import atexit
 
+def is_main_process():
+    """ Check if this is the main control process and may handle one time tasks
+    """
+    try:
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+        return rank == 0
+    except (ImportError, ValueError, RuntimeError):
+        return True
+
 # Allow the pool to be interrupted, need to disable the children processes
 # from intercepting the keyboard interrupt
 def _noint(init, *args):
@@ -62,6 +73,21 @@ class BroadcastPool(multiprocessing.pool.Pool):
         _numdone.value = 0
         return results
 
+    def allmap(self, fcn, args):
+        """ Do a function call on every worker with different arguments
+
+        Parameters
+        ----------
+        fcn: funtion
+            Function to call.
+        args: tuple
+            The arguments for Pool.map
+        """
+        results = self.map(_lockstep_fcn,
+                           [(len(self), fcn, arg) for arg in args])
+        _numdone.value = 0
+        return results
+
     def map(self, func, items, chunksize=None):
         """ Catch keyboard interuppts to allow the pool to exit cleanly.
 
@@ -102,6 +128,7 @@ def choose_pool(processes, mpi=False):
             pool = schwimmbad.choose_pool(mpi=mpi,
                                           processes=processes)
             pool.broadcast = types.MethodType(_dummy_broadcast, pool)
+            atexit.register(pool.close)
         except ImportError:
             raise ValueError("Failed to start up an MPI pool, "
                              "install mpi4py / schwimmbadd")

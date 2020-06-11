@@ -25,8 +25,6 @@ import numpy
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-# Ensure latex rendering
-matplotlib.rc('text', usetex=True)
 
 import pycbc.version
 from pycbc import results
@@ -75,11 +73,8 @@ eta = m1*m2 / (mtot*mtot)
 effspin = (s1z*m1 + s2z*m2) / mtot
 curr_fp.close()
 
-try:
-    cmap = plt.get_cmap('magma')
-except ValueError:
-    from pycbc.future import cmaps
-    cmap = cmaps['magma']
+
+cmap = plt.get_cmap('magma')
 
 def adjust_axes(ax_instance):
     """Adjust axes so that there is always a range of >= 0.1 on the plots."""
@@ -92,7 +87,7 @@ def adjust_axes(ax_instance):
 
 
 pointsize=4
-fig, axarr = plt.subplots(nrows=3, ncols=2)
+fig, axarr = plt.subplots(nrows=3, ncols=2, figsize=(10,8))
 fig.subplots_adjust(left=0.1, bottom=0.1, right=0.8, top=0.96, wspace=0.3,
                      hspace=0.3)
 cax = axarr[0, 0]

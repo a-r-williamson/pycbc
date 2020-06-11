@@ -26,6 +26,7 @@
 waveforms.
 """
 
+import os
 import lal, lalsimulation, numpy, copy
 from pycbc.types import TimeSeries, FrequencySeries, zeros, Array
 from pycbc.types import real_same_precision_as, complex_same_precision_as
@@ -37,13 +38,21 @@ from pycbc.waveform import utils as wfutils
 from pycbc.waveform import parameters
 from pycbc.filter import interpolate_complex_frequency, resample_to_delta_t
 import pycbc
-from spa_tmplt import spa_tmplt, spa_tmplt_norm, spa_tmplt_end, \
+from .spa_tmplt import spa_tmplt, spa_tmplt_norm, spa_tmplt_end, \
                       spa_tmplt_precondition, spa_amplitude_factor, \
                       spa_length_in_time
+from six.moves import range as xrange
+
 
 class NoWaveformError(Exception):
     """This should be raised if generating a waveform would just result in all
     zeros being returned, e.g., if a requested `f_final` is <= `f_lower`.
+    """
+    pass
+
+
+class FailedWaveformError(Exception):
+    """This should be raised if a waveform fails to generate.
     """
     pass
 
@@ -106,7 +115,7 @@ def _check_lal_pars(p):
     if p['quadfmode1'] is not None:
         lalsimulation.SimInspiralWaveformParamsInsertTidalQuadrupolarFMode1(lal_pars, p['quadfmode1'])
     if p['quadfmode2'] is not None:
-        lalsimulation.SimInspiralWaveformParamsInsertTidalQuadrupolarFMode2(lal_pars, p['lambda_octu2'])
+        lalsimulation.SimInspiralWaveformParamsInsertTidalQuadrupolarFMode2(lal_pars, p['quadfmode2'])
     if p['octufmode1'] is not None:
         lalsimulation.SimInspiralWaveformParamsInsertTidalOctupolarFMode1(lal_pars, p['octufmode1'])
     if p['octufmode2'] is not None:
@@ -123,7 +132,7 @@ def _check_lal_pars(p):
         lalsimulation.SimInspiralWaveformParamsInsertFrameAxis(lal_pars, p['frame_axis'])
     if p['side_bands']:
         lalsimulation.SimInspiralWaveformParamsInsertSideband(lal_pars, p['side_bands'])
-    if p['mode_array']:
+    if p['mode_array'] is not None:
         ma = lalsimulation.SimInspiralCreateModeArray()
         for l,m in p['mode_array']:
             lalsimulation.SimInspiralModeArrayActivateMode(ma, l, m)
@@ -153,8 +162,8 @@ def _lalsim_td_waveform(**p):
             raise
         # For some cases failure modes can occur. Here we add waveform-specific
         # instructions to try to work with waveforms that are known to fail.
-        if p['approximant'] == 'SEOBNRv3':
-            # In this case we'll try doubling the sample time and trying again
+        if 'SEOBNRv3' in p['approximant']:
+            # Try doubling the sample time and redoing.
             # Don't want to get stuck in a loop though!
             if 'delta_t_orig' not in p:
                 p['delta_t_orig'] = p['delta_t']
@@ -263,8 +272,8 @@ if pycbc.HAVE_CUDA:
     _cuda_fd_approximants["IMRPhenomC"] = imrphenomc_tmplt
     _cuda_fd_approximants["SpinTaylorF2"] = cuda_spintaylorf2
 
-cuda_td = dict(_lalsim_td_approximants.items() + _cuda_td_approximants.items())
-cuda_fd = dict(_lalsim_fd_approximants.items() + _cuda_fd_approximants.items())
+cuda_td = dict(list(_lalsim_td_approximants.items()) + list(_cuda_td_approximants.items()))
+cuda_fd = dict(list(_lalsim_fd_approximants.items()) + list(_cuda_fd_approximants.items()))
 
 
 # List the various available approximants ####################################
@@ -294,25 +303,25 @@ def td_approximants(scheme=_scheme.mgr.state):
     """Return a list containing the available time domain approximants for
        the given processing scheme.
     """
-    return td_wav[type(scheme)].keys()
+    return list(td_wav[type(scheme)].keys())
 
 def fd_approximants(scheme=_scheme.mgr.state):
     """Return a list containing the available fourier domain approximants for
        the given processing scheme.
     """
-    return fd_wav[type(scheme)].keys()
+    return list(fd_wav[type(scheme)].keys())
 
 def sgburst_approximants(scheme=_scheme.mgr.state):
     """Return a list containing the available time domain sgbursts for
        the given processing scheme.
     """
-    return sgburst_wav[type(scheme)].keys()
+    return list(sgburst_wav[type(scheme)].keys())
 
 def filter_approximants(scheme=_scheme.mgr.state):
     """Return a list of fourier domain approximants including those
        written specifically as templates.
     """
-    return filter_wav[type(scheme)].keys()
+    return list(filter_wav[type(scheme)].keys())
 
 # Input parameter handling ###################################################
 
@@ -324,7 +333,7 @@ def get_obj_attrs(obj):
         if isinstance(obj, numpy.core.records.record):
             for name in obj.dtype.names:
                 pr[name] = getattr(obj, name)
-        elif hasattr(obj, '__dict__'):
+        elif hasattr(obj, '__dict__') and obj.__dict__:
             pr = obj.__dict__
         elif hasattr(obj, '__slots__'):
             for slot in obj.__slots__:
@@ -411,9 +420,6 @@ def get_fd_waveform_sequence(template=None, **kwds):
     kwds['f_lower'] = -1
     p = props(template, required_args=fd_required_args, **kwds)
     lal_pars = _check_lal_pars(p)
-    flags = lalsimulation.SimInspiralCreateWaveformFlags()
-    lalsimulation.SimInspiralSetSpinOrder(flags, p['spin_order'])
-    lalsimulation.SimInspiralSetTidalOrder(flags, p['tidal_order'])
 
     hp, hc = lalsimulation.SimInspiralChooseFDWaveformSequence(float(p['coa_phase']),
                float(pnutils.solar_mass_to_kg(p['mass1'])),
@@ -493,11 +499,12 @@ def get_fd_waveform(template=None, **kwargs):
             if 'f_final' in input_params and \
                     (input_params['f_lower']+input_params['delta_f'] >=
                      input_params['f_final']):
-                raise NoWaveformError("cannot generate waveform: f_lower >= f_final")
+                raise NoWaveformError("cannot generate waveform: f_lower >= "
+                                      "f_final")
     except KeyError:
         pass
-
     return wav_gen[input_params['approximant']](**input_params)
+
 
 get_fd_waveform.__doc__ = get_fd_waveform.__doc__.format(
     params=parameters.fd_waveform_params.docstr(prefix="    ",
@@ -569,7 +576,7 @@ def get_fd_waveform_from_td(**params):
     hc = hc.to_frequencyseries().cyclic_time_shift(hc.start_time)
     return hp, hc
 
-def get_td_waveform_from_fd(**params):
+def get_td_waveform_from_fd(rwrap=0.2, **params):
     """ Return time domain version of fourier domain approximant.
 
     This returns a time domain version of a fourier domain approximant, with
@@ -577,6 +584,10 @@ def get_td_waveform_from_fd(**params):
 
     Parameters
     ----------
+    rwrap: float
+        Cyclic time shift parameter in seconds. A fudge factor to ensure
+        that the entire time series is contiguous in the array and not
+        wrapped around the end.
     params: dict
         The parameters defining the waveform to generator.
         See `get_fd_waveform`.
@@ -597,13 +608,12 @@ def get_td_waveform_from_fd(**params):
         full_duration = get_waveform_filter_length_in_time(**nparams)
         nparams['f_lower'] -= 1
 
-    if 'f_fref' not in nparams:
+    if 'f_ref' not in nparams:
         nparams['f_ref'] = params['f_lower']
 
     # factor to ensure the vectors are all large enough. We don't need to
     # completely trust our duration estimator in this case, at a small
     # increase in computational cost
-    rwrap = 0.2
     fudge_duration = (max(0, full_duration) + .1 + rwrap) * 1.5
     fsamples = int(fudge_duration / params['delta_t'])
     N = pnutils.nearest_larger_binary_number(fsamples)
@@ -614,7 +624,7 @@ def get_td_waveform_from_fd(**params):
 
     # Resize to the right sample rate
     tsize = int(1.0 / params['delta_t'] /  nparams['delta_f'])
-    fsize = tsize / 2 + 1
+    fsize = tsize // 2 + 1
     hp.resize(fsize)
     hc.resize(fsize)
 
@@ -808,8 +818,11 @@ _filter_time_lengths["SEOBNRv4"] = seobnrv4_length_in_time
 _filter_time_lengths["IMRPhenomC"] = imrphenomd_length_in_time
 _filter_time_lengths["IMRPhenomD"] = imrphenomd_length_in_time
 _filter_time_lengths["IMRPhenomPv2"] = imrphenomd_length_in_time
+_filter_time_lengths["IMRPhenomD_NRTidal"] = imrphenomd_length_in_time
+_filter_time_lengths["IMRPhenomPv2_NRTidal"] = imrphenomd_length_in_time
 _filter_time_lengths["SpinTaylorF2"] = spa_length_in_time
 _filter_time_lengths["TaylorF2NL"] = spa_length_in_time
+_filter_time_lengths["PreTaylorF2"] = spa_length_in_time
 
 # Also add generators for switching between approximants
 apx_name = "SpinTaylorF2_SWAPPER"
@@ -819,9 +832,21 @@ _filter_time_lengths[apx_name] = _filter_time_lengths["SpinTaylorF2"]
 from . nltides import nonlinear_tidal_spa
 cpu_fd["TaylorF2NL"] = nonlinear_tidal_spa
 
+from .premerger import premerger_taylorf2
+cpu_fd['PreTaylorF2'] = premerger_taylorf2
+
+# Load external waveforms #####################################################
+if 'PYCBC_WAVEFORM' in os.environ:
+    mods = os.environ['PYCBC_WAVEFORM'].split(':')
+    for mod in mods:
+        mhandle = __import__(mod, fromlist=[''])
+        mhandle.add_me(cpu_fd=cpu_fd,
+                       cpu_td=cpu_td,
+                       filter_time_lengths=_filter_time_lengths)
+
 for apx in copy.copy(_filter_time_lengths):
-    fd_apx = cpu_fd.keys()
-    td_apx = cpu_td.keys()
+    fd_apx = list(cpu_fd.keys())
+    td_apx = list(cpu_td.keys())
 
     if (apx in td_apx) and (apx not in fd_apx):
         # We can make a fd version of td approximants
@@ -869,7 +894,7 @@ def get_waveform_filter(out, template=None, **kwargs):
 
         hp.resize(n)
         out[0:len(hp)] = hp[:]
-        hp = FrequencySeries(out, delta_f=hp.delta_f, copy=False)
+        hp.data = out
 
         hp.length_in_time = hp.chirp_length = duration
         return hp
@@ -923,6 +948,15 @@ def td_waveform_to_fd_waveform(waveform, out=None, length=None,
 
     # total duration of the waveform
     tmplt_length = len(waveform) * waveform.delta_t
+    if len(waveform) > N:
+        err_msg = "The time domain template is longer than the intended "
+        err_msg += "duration in the frequency domain. This situation is "
+        err_msg += "not supported in this function. Please shorten the "
+        err_msg += "waveform appropriately before calling this function or "
+        err_msg += "increase the allowed waveform length. "
+        err_msg += "Waveform length (in samples): {}".format(len(waveform))
+        err_msg += ". Intended length: {}.".format(N)
+        raise ValueError(err_msg)
     # for IMR templates the zero of time is at max amplitude (merger)
     # thus the start time is minus the duration of the template from
     # lower frequency cutoff to merger, i.e. minus the 'chirp time'
@@ -1068,4 +1102,4 @@ __all__ = ["get_td_waveform", "get_fd_waveform", "get_fd_waveform_sequence",
            "get_waveform_filter_length_in_time", "get_sgburst_waveform",
            "print_sgburst_approximants", "sgburst_approximants",
            "td_waveform_to_fd_waveform", "get_two_pol_waveform_filter",
-           "NoWaveformError", "get_td_waveform_from_fd"]
+           "NoWaveformError", "FailedWaveformError", "get_td_waveform_from_fd"]

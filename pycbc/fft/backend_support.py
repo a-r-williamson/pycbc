@@ -54,17 +54,21 @@ def get_backend_modules():
     return _all_backends_dict.values()
 
 def get_backend_names():
-    return _all_backends_dict.keys()
+    return list(_all_backends_dict.keys())
 
 BACKEND_PREFIX="pycbc.fft.backend_"
 
 @pycbc.scheme.schemed(BACKEND_PREFIX)
 def set_backend(backend_list):
-    pass
+    err_msg = "This function is a stub that should be overridden using "
+    err_msg += "the scheme. You shouldn't be seeing this error!"
+    raise ValueError(err_msg)
 
 @pycbc.scheme.schemed(BACKEND_PREFIX)
 def get_backend():
-    return
+    err_msg = "This function is a stub that should be overridden using "
+    err_msg += "the scheme. You shouldn't be seeing this error!"
+    raise ValueError(err_msg)
 
 # Import all scheme-dependent backends, to get _all_backends accurate:
 
