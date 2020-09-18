@@ -207,6 +207,7 @@ class JointDistribution(object):
             of the parameters are arrays, will return an array of booleans.
             Otherwise, a boolean.
         """
+        params = {p: params[p] for p in self.variable_args}
         params, return_atomic = self._ensure_fieldarray(params)
         # convert params to a field array if it isn't one
         result = numpy.ones(params.shape, dtype=bool)
@@ -220,6 +221,7 @@ class JointDistribution(object):
         """Evaluate joint distribution for parameters.
         """
         # convert to Field array
+        params = {p: params[p] for p in self.variable_args}
         parray, return_atomic = self._ensure_fieldarray(params)
         # check if statisfies constraints
         isin = self.contains(parray)
