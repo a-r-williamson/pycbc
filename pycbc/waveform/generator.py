@@ -633,6 +633,8 @@ def select_waveform_generator(approximant):
     elif approximant in ringdown.ringdown_td_approximants:
         if approximant == 'TdQNMfromFinalMassSpin':
             return TDomainMassSpinRingdownGenerator
+        elif approximant == 'TdQNMfromFinalMassSpinMyTaper':
+            return TDomainMassSpinRingdownGenerator
         elif approximant == 'TdQNMfromFreqTau':
             return TDomainFreqTauRingdownGenerator
 

@@ -29,6 +29,7 @@ import re, numpy, lal
 from pycbc.types import TimeSeries, FrequencySeries, float64, complex128, zeros
 from pycbc.waveform.waveform import get_obj_attrs
 from pycbc.conversions import get_lm_f0tau_allmodes
+from pycbc.waveform.utils import td_taper
 
 qnm_required_args = ['f_0', 'tau', 'amp', 'phi']
 mass_spin_required_args = ['final_mass','final_spin', 'lmns', 'inclination']
@@ -582,6 +583,80 @@ def get_td_from_final_mass_spin(template=None, **kwargs):
 
     return multimode_base(input_params)
 
+def get_td_from_final_mass_spin_mytaper(template=None, **kwargs):
+    """Return time domain ringdown with all the modes specified.
+
+    Parameters
+    ----------
+    template : object
+        An object that has attached properties. This can be used to substitute
+        for keyword arguments. A common example would be a row in an xml table.
+    taper : {False, bool}, optional
+        Add a rapid ringup with timescale tau/10 at the beginning of the
+        waveform to avoid the abrupt turn on of the ringdown.
+        Each mode and overtone will have a different taper depending on its tau,
+        the final taper being the superposition of all the tapers.
+    mytaper_start : {None, float}, optional
+    mytaper_end : {None, float}, optional
+    distance : {None, float}, optional
+        Luminosity distance of the system. If specified, the returned ringdown
+        will include the Kerr factor (final_mass/distance).
+    final_mass : float
+        Mass of the final black hole in solar masses.
+    final_spin : float
+        Dimensionless spin of the final black hole.
+    lmns : list
+        Desired lmn modes as strings (lm modes available: 22, 21, 33, 44, 55).
+        The n specifies the number of overtones desired for the corresponding
+        lm pair (maximum n=8).
+        Example: lmns = ['223','331'] are the modes 220, 221, 222, and 330
+    amp220 : float
+        Amplitude of the fundamental 220 mode.  Always required, even if 220
+        mode has not been selected. Note that if distance is given,
+        this parameter will have a completely different order of magnitude.
+        See table II in https://arxiv.org/abs/1107.0854 for an estimate.
+    amplmn : float
+        Fraction of the amplitude of the lmn overtone relative to the
+        fundamental mode, i.e. amplmn/amp220. Provide as many as the number
+        of selected subdominant modes.
+    philmn : float
+        Phase of the lmn overtone, as many as the number of modes. Should also
+        include the information from the azimuthal angle, philmn=(phi + m*Phi).
+    inclination : float
+        Inclination of the system in radians (for the spherical harmonics).
+    delta_t : {None, float}, optional
+        The time step used to generate the ringdown.
+        If None, it will be set to the inverse of the frequency at which the
+        amplitude is 1/1000 of the peak amplitude (the minimum of all modes).
+    t_final : {None, float}, optional
+        The ending time of the output frequency series.
+        If None, it will be set to the time at which the amplitude
+        is 1/1000 of the peak amplitude (the maximum of all modes).
+
+    Returns
+    -------
+    hplus : TimeSeries
+        The plus phase of a ringdown with the lm modes specified and
+        n overtones in time domain.
+    hcross : TimeSeries
+        The cross phase of a ringdown with the lm modes specified and
+        n overtones in time domain.
+    """
+
+    input_params = props(template, mass_spin_required_args, td_args, **kwargs)
+
+    if not "mytaper_start" in input_params \
+            and not "mytaper_end" in input_params:
+        return multimode_base(input_params)
+    else:
+        hp, hc = multimode_base(input_params)
+        tM = input_params["final_mass"] * lal.G_SI * lal.MSUN_SI / lal.C_SI**3
+        hp = td_taper(hp, input_params["mytaper_start"] * tM,
+                      input_params["mytaper_end"] * tM)
+        hc = td_taper(hc, input_params["mytaper_start"] * tM,
+                      input_params["mytaper_end"] * tM)
+        return hp, hc
+
 def get_fd_from_final_mass_spin(template=None, **kwargs):
     """Return frequency domain ringdown with all the modes specified.
 
@@ -762,4 +837,5 @@ def get_fd_from_freqtau(template=None, **kwargs):
 ringdown_fd_approximants = {'FdQNMfromFinalMassSpin': get_fd_from_final_mass_spin,
                             'FdQNMfromFreqTau': get_fd_from_freqtau}
 ringdown_td_approximants = {'TdQNMfromFinalMassSpin': get_td_from_final_mass_spin,
+                            'TdQNMfromFinalMassSpinMyTaper': get_td_from_final_mass_spin_mytaper,
                             'TdQNMfromFreqTau': get_td_from_freqtau}
